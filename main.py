@@ -15,6 +15,7 @@ pos = []
 posx = []
 posy = []
 keys = []
+timestamps = []
 
 # the filepath for the location you put the program
 # e.g. "C:\\python\\"
@@ -24,26 +25,51 @@ program_location = os.path.dirname(os.path.realpath(__file__))
 mouse_controller = MouseController()
 keyboard_controller = KeyboardController()
 
+#global time variable
+last_event_time = None
+
 def on_click(x, y, button, pressed):
+    global last_event_time
     if pressed:
+        current_time = time.time()
+        if last_event_time is not None:
+            time_diff = (current_time - last_event_time) * 1000  # Convert to milliseconds
+        else:
+            time_diff = 0  # No previous event, so time difference is 0
+        last_event_time = current_time
         pos.append((x, y))
         posx.append(x)
         posy.append(y)
         keys.append('clicked')
-        print(f"Mouse position recorded: ({x}, {y})")
+        timestamps.append(time_diff)
+        print(f"Mouse position recorded: ({x}, {y}) with delay {time_diff} ms")
 
 def on_press(key):
+    global last_event_time
+    current_time = time.time()
+    if last_event_time is not None:
+        time_diff = (current_time - last_event_time) * 1000  # Convert to milliseconds
+    else:
+        time_diff = 0  # No previous event, so time difference is 0
+    last_event_time = current_time
     try:
-        keys.append(key.char)
+        if key == Key.space:
+            keys.append('space')
+        elif key == Key.backspace:
+            keys.append('backspace')
+        else:
+            keys.append(key.char)
         posx.append('')  # Add placeholder for posx
         posy.append('')  # Add placeholder for posy
-        print(f"Key pressed: {key.char}")
+        timestamps.append(time_diff)
+        print(f"Key pressed: {key} with delay {time_diff} ms")
     except AttributeError:
         keys.append(str(key))
         posx.append('')  # Add placeholder for posx
         posy.append('')  # Add placeholder for posy
-        print(f"Special key pressed: {key}")
-
+        timestamps.append(time_diff)
+        print(f"Special key pressed: {key} with delay {time_diff} ms")
+        
 def start_mouse_listener():
     global mouse_listener
     mouse_listener = mouse.Listener(on_click=on_click)
@@ -73,15 +99,18 @@ def save_to_csv(output_file_path, posx, posy, keys):
     try:
         with open(output_file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['posx', 'posy', 'keys'])
+            writer.writerow(['posx', 'posy', 'keys','timestamps'])
             for i in range(len(keys)):
-                writer.writerow([posx[i], posy[i], keys[i]])
+                writer.writerow([posx[i], posy[i], keys[i], timestamps[i]])
     except Exception as e:
         print(f"An error occurred while saving to CSV: {e}")
 
 def move_mouse_and_click():
     print("Starting mouse movement and click/key press operations")
     for idx in range(len(keys)):
+        # Sleep for the recorded time before performing the next action
+        time.sleep(timestamps[idx] / 1000.0)  # Convert milliseconds to seconds
+
         if keys[idx] == 'clicked':
             x = int(posx[idx]) * 2 / 3
             y = int(posy[idx]) * 2 / 3
@@ -90,13 +119,23 @@ def move_mouse_and_click():
             time.sleep(0.1)  # Pause to observe the movement
             mouse_controller.click(Button.left, 1)
             print(f"Clicked at ({x}, {y})")
-            time.sleep(1)  # Pause to observe the click
         else:
             key_action = keys[idx]
             print(f"Pressing key '{key_action}'")
             try:
-                # Handle special keys
-                if hasattr(Key, key_action):
+                if key_action == 'space':
+                    keyboard_controller.press(Key.space)
+                    keyboard_controller.release(Key.space)
+                elif key_action == 'backspace':
+                    keyboard_controller.press(Key.backspace)
+                    keyboard_controller.release(Key.backspace)
+                elif key_action == 'enter':
+                    keyboard_controller.press(Key.enter)
+                    keyboard_controller.release(Key.enter)
+                elif key_action == 'shift':
+                    keyboard_controller.press(Key.shift)
+                    keyboard_controller.release(Key.shift)
+                elif hasattr(Key, key_action):
                     key_to_press = getattr(Key, key_action)
                     keyboard_controller.press(key_to_press)
                     keyboard_controller.release(key_to_press)
@@ -106,7 +145,7 @@ def move_mouse_and_click():
             except ValueError:
                 print(f"Failed to press key '{key_action}'")
             print(f"Pressed key '{key_action}'")
-            time.sleep(0.1)  # Pause to observe the key press
+
 
 def record_new_file():
     # Start the listeners in separate threads
@@ -139,6 +178,7 @@ def record_new_file():
         print("X positions:", posx)
         print("Y positions:", posy)
         print("Keyboard inputs:", keys)
+        print("Timestamps:", timestamps)
 
         # Ask user for the output CSV file name
         output_file_name = input("Enter the name of the CSV file to save: ")
@@ -147,7 +187,7 @@ def record_new_file():
         print(f"Lengths: posx={len(posx)}, posy={len(posy)}, keys={len(keys)}")  # Debugging lengths
         save_to_csv(output_file_path, posx, posy, keys)
         print(f"Data saved to {output_file_path}")
-def main():
+def main(): 
     is_new_file = input("New script? (y/n): ").lower() == 'y'
     if is_new_file:
         # Start new file recording if is_new_file is True
@@ -166,7 +206,8 @@ def main():
             posx = [row['posx'] for row in file_contents]
             posy = [row['posy'] for row in file_contents]
             keys = [row['keys'] for row in file_contents]
-            print(f"Lengths: posx={len(posx)}, posy={len(posy)}, keys={len(keys)}")  # Debugging lengths
+            timestamps = [row['timestamps'] for row in file_contents]
+            print(f"Lengths: posx={len(posx)}, posy={len(posy)}, keys={len(keys)}, timestamps={len(timestamps)}")  # Debugging lengths
             print("Positions read from CSV:")
             print(f"posx: {posx}")
             print(f"posy: {posy}")
